@@ -1,0 +1,62 @@
+name: Deploy Affiliate Marketing App to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  APP_DIR: /var/www/aiatoz-affiliate-marketing
+
+jobs:
+  deploy:
+    name: Deploy to AWS EC2
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+      - name: Deploy application to EC2
+        run: |
+          aws ssm send-command \
+            --region us-east-1 \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy aiatoz-affiliate-marketing" \
+            --parameters 'commands=[
+              "set -e",
+              "sudo mkdir -p ${{ env.APP_DIR }}",
+              "sudo chown -R ubuntu:ubuntu ${{ env.APP_DIR }}",
+              "cd ${{ env.APP_DIR }}",
+              "if [ -d .git ]; then git fetch origin && git reset --hard origin/main; else git clone https://github.com/aiatozofficial/aiatoz-affiliate-marketing.git .; fi",
+              "docker compose down || true",
+              "docker compose build --no-cache",
+              "docker compose up -d",
+              "docker image prune -f"
+            ]' \
+            --output text
+
+      - name: Deployment completed
+        run: |
+          echo "Deployment triggered successfully."
+          echo "Region: us-east-1"
+          echo "Application: aiatoz-affiliate-marketing"
