@@ -1,0 +1,31 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_URL: sqlite:///./affiliate.db
+      SECRET_KEY: local-development-secret-change-me-32chars
+      JWT_SECRET_KEY: local-jwt-secret-change-me-32chars
+      CORS_ORIGINS: http://localhost:5173
+      PUBLIC_APP_URL: http://localhost:5173
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_DB: aia2_affiliate
+      POSTGRES_USER: aia2
+      POSTGRES_PASSWORD: local-postgres-password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
