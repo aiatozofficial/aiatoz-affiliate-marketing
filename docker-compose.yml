@@ -2,13 +2,24 @@ services:
   backend:
     build: ./backend
     environment:
-      APP_ENV: development
-      DEBUG: "true"
-      DATABASE_URL: sqlite:///./affiliate.db
-      SECRET_KEY: local-development-secret-change-me-32chars
-      JWT_SECRET_KEY: local-jwt-secret-change-me-32chars
-      CORS_ORIGINS: http://localhost:5173
-      PUBLIC_APP_URL: http://localhost:5173
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-true}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./affiliate.db}
+      SECRET_KEY: ${SECRET_KEY:-local-development-secret-change-me-32chars}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-jwt-secret-change-me-32chars}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe123!}
+      AIATOZ_API_KEY: ${AIATOZ_API_KEY:-replace-with-secure-production-secret}
+      AIATOZ_REFERRAL_BASE_URL: ${AIATOZ_REFERRAL_BASE_URL:-https://aiatoz.org}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-AI A to Z}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
     ports:
       - "8000:8000"
     volumes:

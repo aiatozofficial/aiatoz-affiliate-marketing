@@ -14,13 +14,17 @@ from ...utils.ids import public_id, short_code
 from ...utils.json import dumps
 router=APIRouter(prefix="/auth",tags=["Authentication"])
 
+def _role_value(role) -> str:
+    return getattr(role, "value", role)
+
 def _authenticate(db: Session, payload: LoginRequest, allowed_roles: set[str] | None = None):
-    user=db.query(User).filter(User.email==payload.email.lower()).first()
+    email = payload.email.strip().lower()
+    user=db.query(User).filter(User.email==email).first()
     if not user or not verify_password(payload.password,user.password_hash):
         raise BusinessError("INVALID_CREDENTIALS","Email or password is incorrect.",401)
     if not user.is_active:
         raise BusinessError("ACCOUNT_INACTIVE","This account is inactive.",403)
-    if allowed_roles is not None and user.role.value not in allowed_roles:
+    if allowed_roles is not None and _role_value(user.role) not in allowed_roles:
         # Separate authentication: role mismatch should be explicit
         if "ADMIN" in allowed_roles or "STAFF" in allowed_roles:
             raise BusinessError("FORBIDDEN","This login is for admin accounts only. Please use the affiliate login if you are an affiliate.",403)
@@ -28,7 +32,7 @@ def _authenticate(db: Session, payload: LoginRequest, allowed_roles: set[str] | 
             raise BusinessError("FORBIDDEN","This login is for affiliate accounts only. Please use the admin login if you are an admin.",403)
         raise BusinessError("FORBIDDEN","You do not have permission for this login.",403)
     user.last_login_at=datetime.now(timezone.utc); db.commit()
-    return TokenResponse(access_token=create_access_token(user.public_id,user.role.value),user=UserOut.model_validate(user))
+    return TokenResponse(access_token=create_access_token(user.public_id,_role_value(user.role)),user=UserOut.model_validate(user))
 
 @router.post("/login",response_model=TokenResponse)
 def login(payload:LoginRequest,db:Session=Depends(get_db)):
@@ -47,7 +51,7 @@ def admin_register(payload: AdminRegisterRequest, db: Session = Depends(get_db))
     admin_count = db.query(User).filter(User.role == Role.ADMIN).count()
     if admin_count >= 3:
         raise BusinessError("ADMIN_LIMIT_REACHED", "Only 3 admin accounts are allowed. Registration limit reached. No more admins can be registered.", 403)
-    email = payload.email.lower().strip()
+    email = payload.email.strip().lower()
     if payload.confirmPassword and payload.password != payload.confirmPassword:
         raise BusinessError("VALIDATION_ERROR", "Passwords do not match.", 400)
     if db.query(User).filter(User.email == email).first():
@@ -74,12 +78,12 @@ def admin_register(payload: AdminRegisterRequest, db: Session = Depends(get_db))
     db.commit()
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
-    return TokenResponse(access_token=create_access_token(user.public_id, user.role.value), user=UserOut.model_validate(user))
+    return TokenResponse(access_token=create_access_token(user.public_id, _role_value(user.role)), user=UserOut.model_validate(user))
 
 @router.post("/affiliate/register", response_model=TokenResponse, status_code=201)
 def affiliate_register(payload: AffiliateRegisterRequest, db: Session = Depends(get_db)):
-    email = payload.email.lower().strip()
-    phone = payload.phone.strip()
+    email = payload.email.strip().lower()
+    phone = (payload.phone or "").strip()
     # confirm password if provided
     if payload.confirmPassword and payload.password != payload.confirmPassword:
         raise BusinessError("VALIDATION_ERROR", "Passwords do not match.", 400)
@@ -173,7 +177,7 @@ def affiliate_register(payload: AffiliateRegisterRequest, db: Session = Depends(
     db.commit()
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
-    return TokenResponse(access_token=create_access_token(user.public_id, user.role.value), user=UserOut.model_validate(user))
+    return TokenResponse(access_token=create_access_token(user.public_id, _role_value(user.role)), user=UserOut.model_validate(user))
 
 
 def _hash_token(token: str) -> str:
@@ -187,7 +191,7 @@ def _send_reset_email_bg(email: str, token: str, role: str):
 
 @router.post("/forgot-password")
 def forgot_password(payload: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    email = payload.email.lower().strip()
+    email = payload.email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
     # Always return success to avoid email enumeration
     if not user or not user.is_active:

@@ -45,7 +45,7 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
         logger.info("SMTP not configured — mock email to %s subject=%s (saved to %s)", to_email, subject, OUTBOX_PATH)
         logger.info("Email body (mock): %s", html_body[:600])
         print(f"[MOCK EMAIL] To: {to_email} | Subject: {subject} | Link: {reset_link}\n{html_body[:400]}\n---")
-        print(f"[DEV OUTBOX] View at http://localhost:5177/dev/outbox or http://localhost:8003/api/v1/auth/dev/outbox")
+        print(f"[DEV OUTBOX] View at http://localhost:5173/dev/outbox or http://localhost:8000/api/v1/auth/dev/outbox")
         return True
 
     from_addr = settings.smtp_from or settings.smtp_user

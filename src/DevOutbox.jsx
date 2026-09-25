@@ -1,9 +1,10 @@
 import React,{useEffect,useState} from 'react';
+import {getApiBase} from './services/affiliateApi';
 export default function DevOutbox(){
   const [emails,setEmails]=useState([]);
   const [smtp,setSmtp]=useState(null);
   const [loading,setLoading]=useState(true);
-  const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003/api/v1').replace(/\/$/, '');
+  const API_BASE = getApiBase();
   const fetchOutbox=async()=>{
     setLoading(true);
     try{
