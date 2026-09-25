@@ -7,10 +7,13 @@ class Base(DeclarativeBase):
 
 def _get_database_url() -> str:
     url = settings.database_url
-    # Fix Render/Railway postgres URL: use psycopg3 driver (postgresql+psycopg://) instead of psycopg2
-    # Render provides DATABASE_URL as postgresql:// but requirements use psycopg[binary]
-    if url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    # Managed Postgres providers commonly hand out postgres:// or postgresql://
+    # URLs meant for psycopg2; requirements use psycopg[binary] (psycopg3), so
+    # rewrite to the postgresql+psycopg:// driver SQLAlchemy needs to find it.
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
     return url
 
 _db_url = _get_database_url()
