@@ -1,6 +1,6 @@
 import hashlib, secrets
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from ...core.config import settings
@@ -14,13 +14,17 @@ from ...utils.ids import public_id, short_code
 from ...utils.json import dumps
 router=APIRouter(prefix="/auth",tags=["Authentication"])
 
+def _role_value(role) -> str:
+    return getattr(role, "value", role)
+
 def _authenticate(db: Session, payload: LoginRequest, allowed_roles: set[str] | None = None):
-    user=db.query(User).filter(User.email==payload.email.lower()).first()
+    email = payload.email.strip().lower()
+    user=db.query(User).filter(User.email==email).first()
     if not user or not verify_password(payload.password,user.password_hash):
         raise BusinessError("INVALID_CREDENTIALS","Email or password is incorrect.",401)
     if not user.is_active:
         raise BusinessError("ACCOUNT_INACTIVE","This account is inactive.",403)
-    if allowed_roles is not None and user.role.value not in allowed_roles:
+    if allowed_roles is not None and _role_value(user.role) not in allowed_roles:
         # Separate authentication: role mismatch should be explicit
         if "ADMIN" in allowed_roles or "STAFF" in allowed_roles:
             raise BusinessError("FORBIDDEN","This login is for admin accounts only. Please use the affiliate login if you are an affiliate.",403)
@@ -28,7 +32,7 @@ def _authenticate(db: Session, payload: LoginRequest, allowed_roles: set[str] | 
             raise BusinessError("FORBIDDEN","This login is for affiliate accounts only. Please use the admin login if you are an admin.",403)
         raise BusinessError("FORBIDDEN","You do not have permission for this login.",403)
     user.last_login_at=datetime.now(timezone.utc); db.commit()
-    return TokenResponse(access_token=create_access_token(user.public_id,user.role.value),user=UserOut.model_validate(user))
+    return TokenResponse(access_token=create_access_token(user.public_id,_role_value(user.role)),user=UserOut.model_validate(user))
 
 @router.post("/login",response_model=TokenResponse)
 def login(payload:LoginRequest,db:Session=Depends(get_db)):
@@ -47,7 +51,7 @@ def admin_register(payload: AdminRegisterRequest, db: Session = Depends(get_db))
     admin_count = db.query(User).filter(User.role == Role.ADMIN).count()
     if admin_count >= 3:
         raise BusinessError("ADMIN_LIMIT_REACHED", "Only 3 admin accounts are allowed. Registration limit reached. No more admins can be registered.", 403)
-    email = payload.email.lower().strip()
+    email = payload.email.strip().lower()
     if payload.confirmPassword and payload.password != payload.confirmPassword:
         raise BusinessError("VALIDATION_ERROR", "Passwords do not match.", 400)
     if db.query(User).filter(User.email == email).first():
@@ -74,12 +78,12 @@ def admin_register(payload: AdminRegisterRequest, db: Session = Depends(get_db))
     db.commit()
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
-    return TokenResponse(access_token=create_access_token(user.public_id, user.role.value), user=UserOut.model_validate(user))
+    return TokenResponse(access_token=create_access_token(user.public_id, _role_value(user.role)), user=UserOut.model_validate(user))
 
 @router.post("/affiliate/register", response_model=TokenResponse, status_code=201)
 def affiliate_register(payload: AffiliateRegisterRequest, db: Session = Depends(get_db)):
-    email = payload.email.lower().strip()
-    phone = payload.phone.strip()
+    email = payload.email.strip().lower()
+    phone = (payload.phone or "").strip()
     # confirm password if provided
     if payload.confirmPassword and payload.password != payload.confirmPassword:
         raise BusinessError("VALIDATION_ERROR", "Passwords do not match.", 400)
@@ -173,7 +177,7 @@ def affiliate_register(payload: AffiliateRegisterRequest, db: Session = Depends(
     db.commit()
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
-    return TokenResponse(access_token=create_access_token(user.public_id, user.role.value), user=UserOut.model_validate(user))
+    return TokenResponse(access_token=create_access_token(user.public_id, _role_value(user.role)), user=UserOut.model_validate(user))
 
 
 def _hash_token(token: str) -> str:
@@ -186,8 +190,8 @@ def _send_reset_email_bg(email: str, token: str, role: str):
     return ok
 
 @router.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordRequest, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
-    email = payload.email.lower().strip()
+def forgot_password(payload: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    email = payload.email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
     # Always return success to avoid email enumeration
     if not user or not user.is_active:
@@ -203,32 +207,15 @@ def forgot_password(payload: ForgotPasswordRequest, background_tasks: Background
     from ...services.email_service import send_reset_verification_email
     # Always send synchronously in debug/development so browser sees outbox immediately
     # In production, use background task
-    # Determine correct base URL for reset link (handles aipatashala.com production vs localhost)
-    origin = request.headers.get("origin") or request.headers.get("referer") or ""
-    # Prefer origin if it's aipatashala.com or localhost, otherwise use public_app_url
-    if "aipatashala.com" in origin:
-        base_url = "https://aipatashala.com"
-    elif "localhost" in origin or "127.0.0.1" in origin:
-        # Extract origin base (e.g., http://localhost:5177)
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(origin)
-            base_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else _s.public_app_url
-        except:
-            base_url = _s.public_app_url
-    else:
-        base_url = _s.public_app_url
-    reset_link = f"{base_url.rstrip('/')}/reset-password?token={raw_token}"
-
     if _s.debug or not _smtp_configured():
         # debug: send now so file is available immediately for browser preview and we can capture SMTP success/failure
         try:
-            ok = send_reset_verification_email(user.email, reset_link, user.role.value if hasattr(user.role, 'value') else str(user.role))
+            ok = send_reset_verification_email(user.email, f"{_s.public_app_url.rstrip('/')}/reset-password?token={raw_token}", user.role.value if hasattr(user.role, 'value') else str(user.role))
             # ok indicates SMTP success (or mock success when not configured)
             if not ok and _smtp_configured():
                 # SMTP was configured but failed — log and still save to outbox
                 import json
-                print(f"[FORGOT-PASSWORD] SMTP send failed for {user.email}, but reset link saved to outbox: {OUTBOX_PATH} link={reset_link}")
+                print(f"[FORGOT-PASSWORD] SMTP send failed for {user.email}, but reset link saved to outbox: {OUTBOX_PATH}")
         except Exception as e:
             print(f"[FORGOT-PASSWORD] Exception sending email to {user.email}: {e}")
             # still continue — don't fail the request
@@ -238,7 +225,7 @@ def forgot_password(payload: ForgotPasswordRequest, background_tasks: Background
     resp = {"message": "If an account exists for that email, a verification link has been sent to your registered mail."}
     # expose reset_link in debug for browser verification (dev only)
     if _s.debug:
-        resp["reset_link"] = reset_link
+        resp["reset_link"] = f"{_s.public_app_url.rstrip('/')}/reset-password?token={raw_token}"
         if _smtp_configured():
             # try to indicate SMTP status - check last outbox entry
             resp["dev_note"] = "DEV: Email saved to sent_emails.json and /api/v1/auth/dev/outbox. Gmail SMTP is CONFIGURED — check inbox (and spam). If not received, check server logs for SMTP BadCredentials and view outbox link."

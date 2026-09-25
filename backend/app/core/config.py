@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     smtp_from_name: str = "AI A to Z"
     smtp_use_tls: bool = True
     reset_token_expire_minutes: int = 15
-    model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), case_sensitive=False, extra="ignore")
+    model_config = SettingsConfigDict(env_file=(".env", "../.env", "../../.env", "backend/.env"), case_sensitive=False, extra="ignore")
 
     @property
     def cors_list(self) -> list[str]:

@@ -12,10 +12,14 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, encoded: str) -> bool:
     try:
+        if not isinstance(password, str) or not isinstance(encoded, str):
+            return False
         _, salt_hex, digest_hex = encoded.split("$", 2)
         digest = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt_hex), n=2**14, r=8, p=1)
         return hmac.compare_digest(digest.hex(), digest_hex)
-    except (ValueError, TypeError):
+    except Exception:
+        # Malformed/legacy hashes must fail closed as bad credentials,
+        # never bubble up as a 500 during sign in.
         return False
 
 def create_access_token(subject: str, role: str) -> str:
