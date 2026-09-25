@@ -10,19 +10,19 @@ export default defineConfig({
     allowedHosts: ['aipatashala.com', 'www.aipatashala.com'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8003',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8003',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/readiness': {
-        target: 'http://localhost:8003',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '^/r/.*': {
-        target: 'http://localhost:8003',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
