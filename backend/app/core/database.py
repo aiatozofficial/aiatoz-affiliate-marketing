@@ -7,6 +7,8 @@ class Base(DeclarativeBase):
 
 def _get_database_url() -> str:
     url = settings.database_url
+    # Fix Render/Railway postgres URL: use psycopg3 driver (postgresql+psycopg://) instead of psycopg2
+    # Render provides DATABASE_URL as postgresql:// but requirements use psycopg[binary]
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
