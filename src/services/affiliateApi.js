@@ -1,4 +1,16 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003/api/v1').replace(/\/$/, '');
+const getDefaultApiBase = () => {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'aipatashala.com' || host === 'www.aipatashala.com') {
+      return `${window.location.origin}/api/v1`;
+    }
+    if (host !== 'localhost' && host !== '127.0.0.1' && host !== '') {
+      return `${window.location.origin}/api/v1`;
+    }
+  }
+  return 'http://localhost:8003/api/v1';
+};
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || getDefaultApiBase()).replace(/\/$/, '');
 
 async function request(path, options = {}) {
   let response;
