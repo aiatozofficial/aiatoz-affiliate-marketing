@@ -1,12 +1,31 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003/api/v1').replace(/\/$/, '');
+const getDefaultApiBase = () => {
+  // Production fix: when deployed to aipatashala.com, don't use localhost
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'aipatashala.com' || host === 'www.aipatashala.com') {
+      // Backend is served from same origin via reverse proxy (/api)
+      return `${window.location.origin}/api/v1`;
+    }
+    if (host !== 'localhost' && host !== '127.0.0.1' && host !== '') {
+      // Any other deployed host: try same-origin /api/v1 first
+      return `${window.location.origin}/api/v1`;
+    }
+  }
+  return 'http://localhost:8003/api/v1';
+};
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || getDefaultApiBase()).replace(/\/$/, '');
 
 async function request(path, options = {}) {
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
   } catch (err) {
-    // Network/CORS failure - backend not reachable
-    const networkError = new Error(`Unable to connect to server at ${API_BASE}. Please ensure the backend is running (expected on port 8003). [${err.message}]`);
+    // Network/CORS failure - backend not reachable (fixes aipatashala.com localhost bug)
+    const isProd = typeof window !== 'undefined' && window.location.hostname === 'aipatashala.com';
+    const hint = isProd
+      ? `Backend at ${API_BASE} not reachable from ${window.location.origin}. Ensure backend is deployed and CORS allows ${window.location.origin}.`
+      : `Unable to connect to server at ${API_BASE}. Please ensure the backend is running (expected on port 8003).`;
+    const networkError = new Error(`${hint} [${err.message}]`);
     networkError.code = 'NETWORK_ERROR';
     networkError.status = 0;
     networkError.details = { baseUrl: API_BASE, originalMessage: err.message };
