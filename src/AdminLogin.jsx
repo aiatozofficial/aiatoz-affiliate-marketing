@@ -42,6 +42,9 @@ export default function AdminLogin(){
       <div style={{display:'flex',justifyContent:'flex-end',marginTop:'-6px'}}><button type="button" onClick={()=>{setForgotOpen(true); setForgotEmail(email); setForgotError(''); setForgotSent(false); setForgotLink('');}} style={{background:'none',border:'none',color:'#0b2816',fontSize:'12.5px',fontWeight:700,cursor:'pointer',textDecoration:'underline',padding:'4px 0'}}>Forgot password?</button></div>
       {error&&<div className="submit-error">{error}</div>}
       <button className="btn primary" disabled={loading} style={{background:'#0b2816',color:'#fff',borderColor:'#0b2816'}}>{loading?'Signing in…':'Sign in as Admin'}</button>
+      <div style={{marginTop:'14px',textAlign:'center',fontSize:'13px',color:'#344e3d'}}>
+        No admin account? <a href="/admin/register" style={{color:'#0b2816',fontWeight:800,textDecoration:'underline'}}>Create admin account (≤3)</a>
+      </div>
       <div style={{display:'flex',gap:'10px',marginTop:'14px',justifyContent:'center'}}>
         <a href="/" className="back-link" style={{flex:1,textAlign:'center'}}>← Back to program</a>
       </div>
@@ -67,9 +70,9 @@ export default function AdminLogin(){
         </> : <>
           <div style={{marginTop:'14px',padding:'12px',borderRadius:'10px',background:'#0f2e1a',border:'1px solid #143a23',fontSize:'12.5px',color:'#c8f0cd',lineHeight:1.6}}>
             <strong style={{display:'flex',alignItems:'center',gap:'6px',color:'#7ee094'}}><Icon name="check" size={16}/> Verification email sent</strong>
-            If an account exists for <strong style={{color:'#fff'}}>{forgotEmail}</strong>, a verification link has been sent to your <strong style={{color:'#fff'}}>registered mail</strong> via Gmail SMTP. Check your inbox and follow the reset instructions. The link expires in 15 minutes.
-            {forgotLink && <div style={{marginTop:'10px',padding:'10px',background:'#fff',borderRadius:'8px',border:'1px solid #1e4a2a',wordBreak:'break-all'}}><div style={{fontSize:'11px',color:'#5a6b63'}}>Dev reset link (visible because SMTP not yet configured):</div><a href={forgotLink} style={{color:'#0b2816',fontWeight:700,fontSize:'12px'}}>{forgotLink}</a></div>}
-            <div style={{marginTop:'8px',fontSize:'11px'}}><a href="/dev/outbox" style={{color:'#7ee094',textDecoration:'underline'}}>View all sent emails in dev outbox</a></div>
+            If an account exists for <strong style={{color:'#fff'}}>{forgotEmail}</strong>, a verification link has been sent to your <strong style={{color:'#fff'}}>registered mail</strong> via Gmail SMTP. Check your inbox (and spam folder) and follow the reset instructions. The link expires in 15 minutes.
+            {forgotLink && <div style={{marginTop:'10px',padding:'10px',background:'#fff',borderRadius:'8px',border:'1px solid #1e4a2a',wordBreak:'break-all'}}><div style={{fontSize:'11px',color:'#0b2816',fontWeight:700}}>✓ Reset link — also saved to dev outbox (click to reset):</div><a href={forgotLink} style={{color:'#0b2816',fontWeight:700,fontSize:'12px'}}>{forgotLink}</a><div style={{marginTop:'8px'}}><a href={forgotLink} style={{display:'inline-block',background:'#0b2816',color:'#fff',padding:'8px 14px',borderRadius:'999px',fontSize:'12px',textDecoration:'none',fontWeight:700}}>Open reset link now →</a></div><div style={{fontSize:'10px',color:'#5a6b63',marginTop:'6px'}}>If not in Gmail inbox (SMTP BadCredentials), use this link or <a href="/dev/outbox" style={{color:'#0b2816',textDecoration:'underline'}}>view dev outbox</a>.</div></div>}
+            {!forgotLink && <div style={{marginTop:'8px',fontSize:'11px'}}><a href="/dev/outbox" style={{color:'#7ee094',textDecoration:'underline'}}>View all sent emails in dev outbox</a> — or check inbox/spam. For Gmail App Password: <code>https://myaccount.google.com/apppasswords</code></div>}
           </div>
           <button className="btn secondary" type="button" onClick={()=>setForgotOpen(false)} style={{marginTop:'14px',width:'100%',background:'#f0f4f0',borderColor:'#cde0d2'}}>Done</button>
         </>}

@@ -9,7 +9,7 @@ from ...core.security import verify_password, create_access_token, hash_password
 from ...core.exceptions import BusinessError
 from ...dependencies.auth import current_user
 from ...models import User, Role, Affiliate, AffiliateApplication, ApplicationStatus, AffiliateLink, PasswordResetToken
-from ...schemas.auth import LoginRequest, TokenResponse, UserOut, AffiliateRegisterRequest, ForgotPasswordRequest, ResetPasswordRequest
+from ...schemas.auth import LoginRequest, TokenResponse, UserOut, AffiliateRegisterRequest, AdminRegisterRequest, ForgotPasswordRequest, ResetPasswordRequest
 from ...utils.ids import public_id, short_code
 from ...utils.json import dumps
 router=APIRouter(prefix="/auth",tags=["Authentication"])
@@ -41,6 +41,41 @@ def affiliate_login(payload:LoginRequest,db:Session=Depends(get_db)):
 @router.post("/admin/login",response_model=TokenResponse)
 def admin_login(payload:LoginRequest,db:Session=Depends(get_db)):
     return _authenticate(db, payload, allowed_roles={"ADMIN","STAFF"})
+@router.post("/admin/register", response_model=TokenResponse, status_code=201)
+def admin_register(payload: AdminRegisterRequest, db: Session = Depends(get_db)):
+    # Only 3 admins allowed
+    admin_count = db.query(User).filter(User.role == Role.ADMIN).count()
+    if admin_count >= 3:
+        raise BusinessError("ADMIN_LIMIT_REACHED", "Only 3 admin accounts are allowed. Registration limit reached. No more admins can be registered.", 403)
+    email = payload.email.lower().strip()
+    if payload.confirmPassword and payload.password != payload.confirmPassword:
+        raise BusinessError("VALIDATION_ERROR", "Passwords do not match.", 400)
+    if db.query(User).filter(User.email == email).first():
+        raise BusinessError("DUPLICATE_EMAIL", "An account with this email already exists. Please sign in instead.", 409)
+    # optional phone duplicate check (if provided)
+    phone = payload.phone.strip() if payload.phone else None
+    user = User(
+        public_id=public_id(),
+        name=payload.name.strip(),
+        email=email,
+        phone=phone,
+        password_hash=hash_password(payload.password),
+        role=Role.ADMIN,
+        is_active=True,
+        is_verified=True,
+    )
+    db.add(user)
+    db.flush()
+    from ...services.audit_service import audit as audit_log
+    try:
+        audit_log(db, user.id, "ADMIN_REGISTERED", "User", user.public_id, {"email": email})
+    except Exception:
+        pass
+    db.commit()
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    return TokenResponse(access_token=create_access_token(user.public_id, user.role.value), user=UserOut.model_validate(user))
+
 @router.post("/affiliate/register", response_model=TokenResponse, status_code=201)
 def affiliate_register(payload: AffiliateRegisterRequest, db: Session = Depends(get_db)):
     email = payload.email.lower().strip()
@@ -162,19 +197,39 @@ def forgot_password(payload: ForgotPasswordRequest, background_tasks: Background
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.reset_token_expire_minutes)
     prt = PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires_at)
     db.add(prt); db.commit()
-    # send synchronously in dev if SMTP not configured so outbox is immediate, else background
+    # send synchronously in debug so outbox is immediate and errors are visible
     from ...core.config import settings as _s
-    from ...services.email_service import _smtp_configured
-    if not _smtp_configured():
-        # dev: send now so file is available immediately for browser preview
-        _send_reset_email_bg(user.email, raw_token, user.role.value if hasattr(user.role, 'value') else str(user.role))
+    from ...services.email_service import _smtp_configured, OUTBOX_PATH
+    from ...services.email_service import send_reset_verification_email
+    # Always send synchronously in debug/development so browser sees outbox immediately
+    # In production, use background task
+    if _s.debug or not _smtp_configured():
+        # debug: send now so file is available immediately for browser preview and we can capture SMTP success/failure
+        try:
+            ok = send_reset_verification_email(user.email, f"{_s.public_app_url.rstrip('/')}/reset-password?token={raw_token}", user.role.value if hasattr(user.role, 'value') else str(user.role))
+            # ok indicates SMTP success (or mock success when not configured)
+            if not ok and _smtp_configured():
+                # SMTP was configured but failed — log and still save to outbox
+                import json
+                print(f"[FORGOT-PASSWORD] SMTP send failed for {user.email}, but reset link saved to outbox: {OUTBOX_PATH}")
+        except Exception as e:
+            print(f"[FORGOT-PASSWORD] Exception sending email to {user.email}: {e}")
+            # still continue — don't fail the request
+            pass
     else:
         background_tasks.add_task(_send_reset_email_bg, user.email, raw_token, user.role.value if hasattr(user.role, 'value') else str(user.role))
     resp = {"message": "If an account exists for that email, a verification link has been sent to your registered mail."}
     # expose reset_link in debug for browser verification (dev only)
     if _s.debug:
         resp["reset_link"] = f"{_s.public_app_url.rstrip('/')}/reset-password?token={raw_token}"
-        resp["dev_note"] = "DEV: Gmail SMTP not configured — email saved to sent_emails.json and /api/v1/auth/dev/outbox. Configure SMTP_USER/PASSWORD for real delivery."
+        if _smtp_configured():
+            # try to indicate SMTP status - check last outbox entry
+            resp["dev_note"] = "DEV: Email saved to sent_emails.json and /api/v1/auth/dev/outbox. Gmail SMTP is CONFIGURED — check inbox (and spam). If not received, check server logs for SMTP BadCredentials and view outbox link."
+            resp["smtp_configured"] = True
+        else:
+            resp["dev_note"] = "DEV: Gmail SMTP not configured — email saved to sent_emails.json and /api/v1/auth/dev/outbox. Configure SMTP_USER/PASSWORD (Gmail App Password) in backend/.env for real inbox delivery."
+            resp["smtp_configured"] = False
+        resp["outbox_url"] = "/dev/outbox"
     return resp
 
 @router.get("/dev/outbox")

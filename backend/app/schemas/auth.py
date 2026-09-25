@@ -36,3 +36,10 @@ class AffiliateRegisterRequest(BaseModel):
         if v and v.strip() and not v.strip().startswith("https://"):
             raise ValueError("Use a full URL starting with https://")
         return v.strip() if isinstance(v, str) and v.strip() else None
+
+class AdminRegisterRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    phone: str | None = Field(default=None, min_length=8, max_length=40)
+    password: str = Field(min_length=8, max_length=128, description="Minimum 8 characters")
+    confirmPassword: str | None = Field(default=None, min_length=8, max_length=128)

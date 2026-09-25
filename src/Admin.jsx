@@ -6,13 +6,30 @@ export default function Admin(){
   const [actionMsg,setActionMsg]=useState(null),[actingId,setActingId]=useState(null);
   const [filter,setFilter]=useState('PENDING');
   const [reviewApp,setReviewApp]=useState(null);
+  const [statusCounts,setStatusCounts]=useState({PENDING:0, APPROVED:0, ACTIVE:0, REJECTED:0, ALL:0});
   const [conversions,setConversions]=useState(null),[convLoading,setConvLoading]=useState(false),[convError,setConvError]=useState(''),[convFilter,setConvFilter]=useState('');
   const loadOverview=()=> getAdminOverview().then(r=>setData(r.data)).catch(e=>setError(e.message));
+  const loadStatusCounts=()=>{
+    // fetch counts for each status to show badges and ensure pending visibility
+    const statuses=['PENDING','APPROVED','ACTIVE','REJECTED',''];
+    Promise.all(statuses.map(s=>{
+      const params=s?{status:s}:{};
+      return listApplications(params).then(r=>({status:s||'ALL', total:r.data?.total ?? (Array.isArray(r.data?.items)?r.data.items.length:0)})).catch(()=>({status:s||'ALL', total:0}))
+    })).then(results=>{
+      const map={};
+      results.forEach(r=>{ map[r.status]=r.total; });
+      setStatusCounts(map);
+    });
+  };
   const loadApps=(status=filter)=>{
     setLoadingApps(true); setAppsError('');
     listApplications(status?{status}:{}).then(r=>{
       const items=r.data?.items||r.data||[];
       setApps(Array.isArray(items)?items:[]);
+      // also update single count for current filter
+      if(r.data?.total!=null){
+        setStatusCounts(prev=>({...prev, [status||'ALL']: r.data.total}));
+      }
     }).catch(e=>setAppsError(e.message)).finally(()=>setLoadingApps(false));
   };
   const loadConversions=(status=convFilter)=>{
@@ -21,7 +38,7 @@ export default function Admin(){
       setConversions(r.data||r);
     }).catch(e=>setConvError(e.message)).finally(()=>setConvLoading(false));
   };
-  useEffect(()=>{loadOverview();loadApps('PENDING'); loadConversions('');},[]);
+  useEffect(()=>{loadOverview();loadStatusCounts();loadApps('PENDING'); loadConversions('');},[]);
   useEffect(()=>{loadApps(filter);},[filter]);
   useEffect(()=>{loadConversions(convFilter);},[convFilter]);
   const handleApprove=async (app)=>{
@@ -32,7 +49,7 @@ export default function Admin(){
       const act=await activateApplication(app.public_id);
       setActionMsg({type:'success', text:`✓ ${app.name} is now ACTIVE — Affiliate ID ${act.data.affiliate_id}. Refreshing...`});
       setReviewApp(null);
-      loadOverview(); loadApps(filter); loadConversions(convFilter);
+      loadOverview(); loadStatusCounts(); loadApps(filter); loadConversions(convFilter);
     }catch(e){
       const isDup=(e.code||'').includes('DUPLICATE')||(e.code||'').includes('CONFLICT');
       setActionMsg({type:'error', text: isDup?`Duplicate: ${app.email} already has an application.` : (e.message||'Approve failed.')});
@@ -44,7 +61,7 @@ export default function Admin(){
       const r=await activateApplication(app.public_id);
       setActionMsg({type:'success', text:`✓ Activated ${app.name} — ${r.data.affiliate_id}`});
       setReviewApp(null);
-      loadOverview(); loadApps(filter);
+      loadOverview(); loadStatusCounts(); loadApps(filter);
     }catch(e){setActionMsg({type:'error', text:e.message});}
     finally{setActingId(null);}
   };
@@ -55,7 +72,7 @@ export default function Admin(){
       await rejectApplication(app.public_id);
       setActionMsg({type:'success', text:`Rejected ${app.name}.`});
       setReviewApp(null);
-      loadOverview(); loadApps(filter);
+      loadOverview(); loadStatusCounts(); loadApps(filter);
     }catch(e){setActionMsg({type:'error', text:e.message});}
     finally{setActingId(null);}
   };
@@ -119,22 +136,30 @@ export default function Admin(){
 
   <div style={{marginTop:'28px', background:'white', borderRadius:'18px', padding:'22px', boxShadow:'0 12px 40px rgba(20,58,35,.08)', border:'1px solid rgba(20,58,35,.08)'}}>
     <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px', marginBottom:'16px'}}>
-      <h2 style={{margin:0, fontSize:'18px', color:'#0f2a1a'}}>Applications</h2>
+      <div>
+        <h2 style={{margin:0, fontSize:'18px', color:'#0f2a1a'}}>Applications</h2>
+        <p style={{margin:'4px 0 0', fontSize:'11px', color:'#5a6b63'}}>Landing “Become an Affiliate” → <strong>PENDING</strong> (needs review). Self-register via <code>/affiliate/register</code> → <strong>ACTIVE</strong> (instant). Use filters to see each.</p>
+      </div>
       <div style={{display:'flex', gap:'8px', flexWrap:'wrap'}}>
         {['PENDING','APPROVED','ACTIVE','REJECTED',''].map(s=>{
           const label=s||'ALL';
           const active=filter===s;
-          return <button key={label} onClick={()=>setFilter(s)} style={{padding:'7px 12px', borderRadius:'999px', border:active?'1px solid #0f2a1a':'1px solid #d9e8dd', background:active?'#0f2a1a':'white', color:active?'white':'#0f2a1a', fontSize:'13px', fontWeight:600, cursor:'pointer'}}>{label}</button>
+          const count=statusCounts[label] ?? 0;
+          return <button key={label} onClick={()=>setFilter(s)} style={{padding:'7px 12px', borderRadius:'999px', border:active?'1px solid #0f2a1a':'1px solid #d9e8dd', background:active?'#0f2a1a':'white', color:active?'white':'#0f2a1a', fontSize:'13px', fontWeight:600, cursor:'pointer'}}>{label} {count>0 && <span style={{marginLeft:'6px', background:active?'rgba(255,255,255,.2)':'#eef4ee', padding:'1px 6px', borderRadius:'999px', fontSize:'11px'}}>{count}</span>}</button>
         })}
-        <button onClick={()=>{loadOverview();loadApps(); loadConversions(convFilter);}} style={{padding:'7px 12px', borderRadius:'999px', border:'1px solid #d9e8dd', background:'#f3fdf4', color:'#0f2a1a', fontSize:'13px', fontWeight:600}}>↻ Refresh</button>
+        <button onClick={()=>{loadOverview();loadStatusCounts();loadApps(); loadConversions(convFilter);}} style={{padding:'7px 12px', borderRadius:'999px', border:'1px solid #d9e8dd', background:'#f3fdf4', color:'#0f2a1a', fontSize:'13px', fontWeight:600}}>↻ Refresh</button>
       </div>
     </div>
 
     {actionMsg&&<div style={{marginBottom:'14px', padding:'11px 14px', borderRadius:'12px', border:`1px solid ${actionMsg.type==='success'?'#b6e7c9':'#f7c9c9'}`, background:actionMsg.type==='success'?'#eef9f1':'#fdf0f0', color:actionMsg.type==='success'?'#0a3d1e':'#7a1a1a', fontSize:'13.5px'}}>{actionMsg.text}</div>}
 
     {loadingApps&&<p style={{color:'#6b8a72'}}>Loading applications…</p>}
-    {appsError&&<div className="submit-error">{appsError}</div>}
-    {!loadingApps&&!appsError&&apps.length===0&&<p style={{color:'#6b8a72', padding:'18px', textAlign:'center', background:'#f8faf8', borderRadius:'12px', border:'1px dashed #d9e8dd'}}>No {filter||'all'} applications found.</p>}
+    {appsError&&<div className="submit-error">{appsError} (check console, ensure admin login via <code>/admin/login</code> with real Gmail)</div>}
+    {!loadingApps&&!appsError&&apps.length===0&&<div style={{padding:'18px', textAlign:'center', background:'#f8faf8', borderRadius:'12px', border:'1px dashed #d9e8dd'}}>
+      <p style={{color:'#6b8a72', margin:0}}>No {filter||'all'} applications found.</p>
+      {filter==='PENDING' && statusCounts['ACTIVE']>0 && <p style={{color:'#0f2a1a', margin:'8px 0 0', fontSize:'12px'}}>You have <strong>{statusCounts['ACTIVE']} ACTIVE</strong> (self-registered) — click <button onClick={()=>setFilter('ACTIVE')} style={{background:'#0f2a1a',color:'#fff',border:'none',padding:'2px 8px',borderRadius:'999px',fontSize:'11px',cursor:'pointer'}}>ACTIVE</button> or <button onClick={()=>setFilter('')} style={{background:'#eef4ee',border:'1px solid #d9e8dd',padding:'2px 8px',borderRadius:'999px',fontSize:'11px',cursor:'pointer'}}>ALL</button> to see them.</p>}
+      {filter==='PENDING' && statusCounts['ALL']===0 && <p style={{color:'#5a6b63', margin:'8px 0 0', fontSize:'12px'}}>Create a test: <code>Become an Affiliate</code> on landing page → PENDING, or <code>/affiliate/register</code> → ACTIVE.</p>}
+    </div>}
 
     {!loadingApps&&apps.length>0&&<div style={{display:'grid', gap:'12px'}}>
       {apps.map(app=>(

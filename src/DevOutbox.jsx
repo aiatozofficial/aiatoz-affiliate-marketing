@@ -3,13 +3,20 @@ export default function DevOutbox(){
   const [emails,setEmails]=useState([]);
   const [smtp,setSmtp]=useState(null);
   const [loading,setLoading]=useState(true);
+  const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003/api/v1').replace(/\/$/, '');
   const fetchOutbox=async()=>{
     setLoading(true);
     try{
-      const r=await fetch('http://localhost:8002/api/v1/auth/dev/outbox');
+      const r=await fetch(`${API_BASE}/auth/dev/outbox`);
       const j=await r.json();
       setEmails(j.emails||[]); setSmtp(j);
-    }catch(e){ setEmails([]); }
+    }catch(e){
+      try{
+        const r2=await fetch('/api/v1/auth/dev/outbox');
+        const j2=await r2.json();
+        setEmails(j2.emails||[]); setSmtp(j2);
+      }catch(e2){ setEmails([]); }
+    }
     setLoading(false);
   };
   useEffect(()=>{ fetchOutbox(); const t=setInterval(fetchOutbox,3000); return()=>clearInterval(t); },[]);

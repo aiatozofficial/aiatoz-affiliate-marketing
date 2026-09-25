@@ -1,7 +1,17 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003/api/v1').replace(/\/$/, '');
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  } catch (err) {
+    // Network/CORS failure - backend not reachable
+    const networkError = new Error(`Unable to connect to server at ${API_BASE}. Please ensure the backend is running (expected on port 8003). [${err.message}]`);
+    networkError.code = 'NETWORK_ERROR';
+    networkError.status = 0;
+    networkError.details = { baseUrl: API_BASE, originalMessage: err.message };
+    throw networkError;
+  }
   let body = null; try { body = await response.json(); } catch {}
   if (!response.ok) {
     // FastAPI validation errors come as {detail: [{loc, msg, ...}]}
@@ -44,6 +54,7 @@ export async function login(email,password){const r=await request('/auth/login',
 export async function affiliateLogin(email,password){const r=await request('/auth/affiliate/login',{method:'POST',body:JSON.stringify({email,password})});sessionStorage.setItem('aia2-access-token',r.access_token);return r;}
 export async function adminLogin(email,password){const r=await request('/auth/admin/login',{method:'POST',body:JSON.stringify({email,password})});sessionStorage.setItem('aia2-access-token',r.access_token);return r;}
 export async function affiliateRegister({name,email,phone,password,confirmPassword}){const r=await request('/auth/affiliate/register',{method:'POST',body:JSON.stringify({name,email,phone,password,confirmPassword})});sessionStorage.setItem('aia2-access-token',r.access_token);return r;}
+export async function adminRegister({name,email,phone,password,confirmPassword}){const r=await request('/auth/admin/register',{method:'POST',body:JSON.stringify({name,email,phone,password,confirmPassword})});sessionStorage.setItem('aia2-access-token',r.access_token);return r;}
 export async function forgotPassword(email){ return request('/auth/forgot-password',{method:'POST',body:JSON.stringify({email})}); }
 export async function resetPassword(token,newPassword,confirmPassword){ return request('/auth/reset-password',{method:'POST',body:JSON.stringify({token,newPassword,confirmPassword})}); }
 export function logout(){sessionStorage.removeItem('aia2-access-token');}

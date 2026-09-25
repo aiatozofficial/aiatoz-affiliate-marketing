@@ -45,6 +45,7 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
         logger.info("SMTP not configured — mock email to %s subject=%s (saved to %s)", to_email, subject, OUTBOX_PATH)
         logger.info("Email body (mock): %s", html_body[:600])
         print(f"[MOCK EMAIL] To: {to_email} | Subject: {subject} | Link: {reset_link}\n{html_body[:400]}\n---")
+        print(f"[DEV OUTBOX] View at http://localhost:5177/dev/outbox or http://localhost:8003/api/v1/auth/dev/outbox")
         return True
 
     from_addr = settings.smtp_from or settings.smtp_user
@@ -73,11 +74,20 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
             with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=15) as server:
                 server.login(settings.smtp_user, settings.smtp_password)
                 server.send_message(msg)
-        logger.info("Reset email sent via Gmail SMTP to %s", to_email)
+        logger.info("Reset email sent via Gmail SMTP to %s via %s:%s", to_email, settings.smtp_host, settings.smtp_port)
+        print(f"[SMTP SUCCESS] Email delivered to {to_email} via {settings.smtp_host}")
         return True
     except Exception as e:
         logger.error("Failed to send email via Gmail SMTP to %s: %s", to_email, e)
-        # don't raise — still return False so caller can handle
+        print(f"[SMTP FAILED] To: {to_email} Error: {e}")
+        print(f"[SMTP FAILED] Saved to outbox anyway: {OUTBOX_PATH} — view at http://localhost:5177/dev/outbox")
+        print(f"[SMTP FAILED] Reset link: {reset_link}")
+        # Return True anyway so dev flow still shows link (inbox delivery failed but outbox has it)
+        # For production, caller should check smtp_configured and log
+        # We save again with failed flag
+        try:
+            _save_to_outbox(to_email, f"[FAILED SMTP] {subject}", html_body, text_body, reset_link)
+        except: pass
         return False
 
 def send_reset_verification_email(to_email: str, reset_link: str, role: str = "user") -> bool:
@@ -90,6 +100,7 @@ Reset link (expires in {settings.reset_token_expire_minutes} minutes):
 {reset_link}
 
 If you did not request this, ignore this email. The link will expire automatically.
+Dev outbox: http://localhost:5177/dev/outbox
 
 — AI A to Z Affiliate Platform
 """
